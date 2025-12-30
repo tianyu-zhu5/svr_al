@@ -1,0 +1,18 @@
+# MATLAB
+*.asv
+*.m~
+*.mex*
+*.p
+slprj/
+codegen/
+
+# Outputs / artifacts
+out/
+*.mat
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+
