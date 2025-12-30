@@ -12,6 +12,8 @@ cfg.budgetTotal = 100;
 cfg.bootstrapM = 15;
 cfg.weights = struct("tauQuantile", 0.30, "form", "inv");
 cfg.stop = struct("useUminStable", true, "UminDelta", 1e-3, "K", 3, "usePfConv", true, "PfEta", 1e-2, "minIters", 12);
+cfg.surrogate = struct("method", "auto");
+cfg.tune = struct("enabled", true, "method", "auto", "methodHint", "auto", "Kfold", 5, "maxEvals", 12, "everyNeval", 10, "minTrainN", 20, "metric", "wrmse");
 
 % Online (M5) settings
 cfg.online = struct();
@@ -37,74 +39,15 @@ spec.evalFcn = spec.trueG;
 
 outDir = lqy.io.makeOutDir(fullfile(projectRoot, "out"), "2d_offline_online");
 
-% ----- Offline stage (reuse logic from run_2d_offline.m) -----
-pool = lqy.pool.buildPoolTruncatedLHS(spec, cfg);
-normModelTmp = struct("lb", spec.lb, "ub", spec.ub);
-[X0, idx0] = lqy.doe.selectDOE_kmeans(pool, cfg, normModelTmp);
-g0 = spec.evalFcn(X0);
-
-log = struct();
-log.X_all = X0;
-log.g_all = g0;
-log.stage = zeros(size(X0,1), 1);
-log.meta = struct("seed", cfg.seed, "cfg", cfg, "spec", rmfield(spec, ["evalFcn","trueG"]));
-
-XTrain = X0;
-gTrain = g0;
-poolX = pool.X;
-picked = false(size(poolX,1), 1);
-picked(idx0) = true;
-
-Pf_hat = [];
-UminHist = [];
-alphaHist = [];
-NevalHist = [];
-
-while true
-  normModel = lqy.norm.fitNormModel(XTrain, spec);
-  model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, cfg, normModel);
-  [mu, sigma] = lqy.svr.predictBootstrap(model, poolX);
-
-  Pf_hat(end+1,1) = lqy.reliability.estimatePf(mu, cfg); %#ok<SAGROW>
-  U = abs(mu) ./ max(sigma, 1e-12);
-  UminHist(end+1,1) = min(U); %#ok<SAGROW>
-
-  t = numel(Pf_hat);
-  [score, detail] = lqy.al.acquisitionScore(mu, sigma, poolX, XTrain, cfg, normModel, t);
-  alphaHist(end+1,1) = detail.alpha; %#ok<SAGROW>
-
-  score(picked) = -inf;
-  [~, nextIdx] = max(score);
-  xNext = poolX(nextIdx, :);
-  gNext = spec.evalFcn(xNext);
-
-  XTrain = [XTrain; xNext]; %#ok<AGROW>
-  gTrain = [gTrain; gNext]; %#ok<AGROW>
-  picked(nextIdx) = true;
-  log.stage = [log.stage; 1]; %#ok<AGROW>
-
-  Neval = size(XTrain, 1);
-  NevalHist(end+1,1) = Neval; %#ok<SAGROW>
-  state = struct("Neval", Neval, "PfHist", Pf_hat, "UminHist", UminHist);
-  [stop, reason] = lqy.al.stopCriteria(state, cfg);
-  if stop
-    fprintf("Offline stop: %s (Neval=%d)\\n", reason, Neval);
-    break;
-  end
-end
-
-log.X_all = XTrain;
-log.g_all = gTrain;
-log.Pf_hat = Pf_hat;
-log.Umin = UminHist;
-log.alpha = alphaHist;
-log.NevalHist = NevalHist;
+% ----- Offline stage -----
+cfg.resume = false;
+[model, log, pool] = lqy.al.runOffline(spec, cfg, outDir);
 
 % ----- Online stage (simulate a design point trajectory) -----
 % In real use, designHist comes from RBDO iterations.
 designHist = [-0.4 -0.2; -0.2 -0.1; -0.1 -0.05; -0.08 -0.04; -0.075 -0.038];
 
-budgetRemain = cfg.budgetTotal - size(log.X_all, 1);
+budgetRemain = cfg.budgetTotal - numel(log.poolIdx_all);
 [model, log, used, info] = lqy.online.onlineRefine(spec, pool, model, log, designHist, budgetRemain, cfg);
 fprintf("Online refine triggered=%d reason=%s usedBudget=%d iters=%d\\n", info.triggered, info.triggerReason, used, info.iters);
 
@@ -118,4 +61,3 @@ lqy.viz.plot2DResults(spec, pool, log, outDir);
 
 disp("Offline+Online demo complete.");
 disp("Output: " + outDir);
-

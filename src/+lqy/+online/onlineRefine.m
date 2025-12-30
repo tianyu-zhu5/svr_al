@@ -18,18 +18,17 @@ if budgetRemain <= 0 || isempty(designHist)
   return;
 end
 
-XTrain = log.X_all;
-gTrain = log.g_all;
 poolX = pool.X;
 
-% Track already-picked pool points by exact match on rows (pool-based assumption).
-picked = false(size(poolX,1), 1);
-% Best-effort mapping: for each training point, find identical pool row.
-% (For robustness, user should store pool indices; we keep this lightweight for now.)
-for i = 1:size(XTrain,1)
-  hit = find(all(poolX == XTrain(i,:), 2), 1, "first");
-  if ~isempty(hit); picked(hit) = true; end
+if ~isfield(log, "poolIdx_all") || isempty(log.poolIdx_all)
+  error("log.poolIdx_all is required for reliable online refinement.");
 end
+
+picked = false(size(poolX,1), 1);
+picked(log.poolIdx_all) = true;
+
+XTrain = log.X_all;
+gTrain = log.g_all;
 
 [trigger, reason] = lqy.online.shouldTrigger(designHist, model, poolX, XTrain, cfg);
 if ~trigger
@@ -58,10 +57,24 @@ if isfield(cfg, "online") && isfield(cfg.online, "maxIters"); maxIters = min(max
 
 xd = designHist(end, :);
 
+hpCurrent = [];
+if isfield(model, "hpShared")
+  hpCurrent = model.hpShared;
+end
+onlineTune = false;
+if isfield(cfg, "online") && isfield(cfg.online, "tuneEnabled")
+  onlineTune = logical(cfg.online.tuneEnabled);
+end
+
 for it = 1:maxIters
   % Update normalization and surrogate with newest samples.
   normModel = lqy.norm.fitNormModel(XTrain, spec);
-  model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, cfg, normModel);
+  if onlineTune && isfield(cfg, "tune") && isfield(cfg.tune, "enabled") && cfg.tune.enabled
+    w = lqy.svr.computeWeights(gTrain, cfg);
+    Z = lqy.norm.zscoreApply(XTrain, normModel);
+    [hpCurrent, ~] = lqy.svr.tuneHyperparams(Z, gTrain, w, cfg, "auto");
+  end
+  model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, cfg, normModel, hpCurrent);
 
   idxLocal = lqy.online.localPoolIndices(poolX, xd, r, normModel);
   if isempty(idxLocal)
@@ -84,14 +97,8 @@ for it = 1:maxIters
   t = it;
   [score, ~] = lqy.al.acquisitionScore(mu, sigma, Xcand, XTrain, localCfg, normModel, t);
 
-  % Exclude already selected points.
-  pickedLocal = false(size(Xcand,1), 1);
-  for k = 1:numel(idxLocal)
-    if picked(idxLocal(k))
-      pickedLocal(k) = true;
-    end
-  end
-  score(pickedLocal) = -inf;
+  % Exclude already selected pool points.
+  score(picked(idxLocal)) = -inf;
   [bestScore, relIdx] = max(score);
   if ~isfinite(bestScore)
     if r <= rMin
@@ -109,6 +116,7 @@ for it = 1:maxIters
   gTrain = [gTrain; gNext]; %#ok<AGROW>
   picked(nextIdx) = true;
 
+  log.poolIdx_all(end+1,1) = nextIdx; %#ok<AGROW>
   log.X_all = XTrain;
   log.g_all = gTrain;
   log.stage = [log.stage; 2]; %#ok<AGROW>
@@ -123,4 +131,3 @@ for it = 1:maxIters
   r = max(r * rShrink, rMin);
 end
 end
-
