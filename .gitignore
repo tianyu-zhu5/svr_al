@@ -7,9 +7,9 @@ slprj/
 codegen/
 
 # Outputs / artifacts
-out/
-!out/**/
-!out/**/*.png
+out/*
+!out/*/
+!out/*/*.png
 *.mat
 
 # OS / editor
