@@ -45,7 +45,7 @@ if isfield(spec, "trueG") && ~isempty(spec.trueG)
   [X1, X2] = meshgrid(x1, x2);
   G = spec.trueG([X1(:), X2(:)]);
   G = reshape(G, size(X1));
-  hBoundary = contour(X1, X2, G, [0 0], "k", "LineWidth", 1.5);
+  [~, hBoundary] = contour(X1, X2, G, [0 0], "k", "LineWidth", 1.5);
 end
 
 grid on; box on;
@@ -57,7 +57,7 @@ if ~isempty(hOnline)
   handles(end+1) = hOnline; %#ok<AGROW>
   labels(end+1) = "Online"; %#ok<AGROW>
 end
-if ~isempty(hBoundary)
+if ~isempty(hBoundary) && isgraphics(hBoundary)
   handles(end+1) = hBoundary; %#ok<AGROW>
   labels(end+1) = "g(x)=0"; %#ok<AGROW>
 end
