@@ -8,6 +8,8 @@ codegen/
 
 # Outputs / artifacts
 out/
+!out/**/
+!out/**/*.png
 *.mat
 
 # OS / editor
@@ -15,4 +17,3 @@ out/
 Thumbs.db
 desktop.ini
 .vscode/
-
