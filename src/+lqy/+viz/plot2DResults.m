@@ -1,10 +1,11 @@
-function plot2DResults(spec, pool, log, outDir)
+function plot2DResults(spec, pool, log, model, outDir)
 %PLOT2DRESULTS Plot Pf convergence and 2D sampling trajectory.
 
 arguments
   spec (1,1) struct
   pool (1,1) struct
   log (1,1) struct
+  model (1,1) struct
   outDir (1,1) string
 end
 
@@ -39,13 +40,29 @@ if any(isOnline)
 end
 
 hBoundary = [];
+hBoundaryHat = [];
 if isfield(spec, "trueG") && ~isempty(spec.trueG)
   x1 = linspace(spec.lb(1), spec.ub(1), 250);
   x2 = linspace(spec.lb(2), spec.ub(2), 250);
   [X1, X2] = meshgrid(x1, x2);
   G = spec.trueG([X1(:), X2(:)]);
   G = reshape(G, size(X1));
-  [~, hBoundary] = contour(X1, X2, G, [0 0], "k", "LineWidth", 1.5);
+  [~, hBoundary] = contour(X1, X2, G, [0 0], "k", "LineWidth", 1.8);
+end
+
+% Predicted boundary ghat(x)=0 from final surrogate model (A-mean main model).
+if nargin >= 4 && ~isempty(model) && isstruct(model) && isfield(model, "normModel")
+  x1 = linspace(spec.lb(1), spec.ub(1), 250);
+  x2 = linspace(spec.lb(2), spec.ub(2), 250);
+  [X1h, X2h] = meshgrid(x1, x2);
+  Xgrid = [X1h(:), X2h(:)];
+  try
+    ghat = lqy.surrogate.predictSurrogate(model, Xgrid);
+    ghat = reshape(ghat, size(X1h));
+    [~, hBoundaryHat] = contour(X1h, X2h, ghat, [0 0], "m", "LineWidth", 1.8);
+  catch
+    hBoundaryHat = [];
+  end
 end
 
 grid on; box on;
@@ -59,7 +76,11 @@ if ~isempty(hOnline)
 end
 if ~isempty(hBoundary) && isgraphics(hBoundary)
   handles(end+1) = hBoundary; %#ok<AGROW>
-  labels(end+1) = "g(x)=0"; %#ok<AGROW>
+  labels(end+1) = "g_{true}(x)=0"; %#ok<AGROW>
+end
+if ~isempty(hBoundaryHat) && isgraphics(hBoundaryHat)
+  handles(end+1) = hBoundaryHat; %#ok<AGROW>
+  labels(end+1) = "g_{hat}(x)=0"; %#ok<AGROW>
 end
 legend(handles, labels, "Location", "best");
 saveas(f, fullfile(outDir, "samples_2d.png"));

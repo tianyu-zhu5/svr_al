@@ -57,7 +57,7 @@ if used > 0
 end
 
 lqy.io.saveModelAndLog(model, log, outDir, stageToSave);
-lqy.viz.plot2DResults(spec, pool, log, outDir);
+lqy.viz.plot2DResults(spec, pool, log, model, outDir);
 
 disp("Offline+Online demo complete.");
 disp("Output: " + outDir);

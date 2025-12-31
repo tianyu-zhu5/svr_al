@@ -43,7 +43,7 @@ end
 [model, log, pool] = lqy.al.runOffline(spec, cfg, outDir);
 
 X0 = log.X_all(log.stage == 0, :);
-lqy.viz.plot2DResults(spec, pool, log, outDir);
+lqy.viz.plot2DResults(spec, pool, log, model, outDir);
 lqy.viz.plot2DPoolAndDOE(spec, pool, X0, outDir);
 
 disp("MVP complete.");
