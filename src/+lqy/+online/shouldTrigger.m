@@ -53,8 +53,8 @@ if isempty(idxLocal)
   return;
 end
 
-[mu, sigma] = lqy.svr.predictBootstrap(model, poolX(idxLocal, :));
-U = abs(mu) ./ max(sigma, 1e-12);
+[ghat, sigma] = lqy.surrogate.predictSurrogate(model, poolX(idxLocal, :));
+U = abs(ghat) ./ max(sigma, 1e-12);
 UminLocal = min(U);
 detail.UminLocal = UminLocal;
 
@@ -63,4 +63,3 @@ if UminLocal < Utrigger
   reason = "U_low_near_design";
 end
 end
-

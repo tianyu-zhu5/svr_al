@@ -55,7 +55,7 @@ picked(log.poolIdx_all) = true;
 XTrain = log.X_all;
 gTrain = log.g_all;
 hpCurrent = [];
-if isfield(log, "tune") && isfield(log.tune, "hpLast")
+if isfield(log, "tune") && isfield(log.tune, "hpLast") && ~isempty(log.tune.hpLast)
   hpCurrent = log.tune.hpLast;
 end
 
@@ -64,15 +64,15 @@ while true
   w = lqy.svr.computeWeights(gTrain, cfg);
 
   [doTune, hpCurrent, tuneInfo] = maybeTune(normModel, XTrain, gTrain, w, cfg, hpCurrent);
-  model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, cfg, normModel, hpCurrent);
+  model = lqy.surrogate.trainSurrogate(XTrain, gTrain, cfg, spec, normModel, hpCurrent);
 
-  [mu, sigma] = lqy.svr.predictBootstrap(model, poolX);
-  Pf = lqy.reliability.estimatePf(mu, cfg);
-  U = abs(mu) ./ max(sigma, 1e-12);
+  [ghat, sigma] = lqy.surrogate.predictSurrogate(model, poolX);
+  Pf = lqy.reliability.estimatePf(ghat, cfg);
+  U = abs(ghat) ./ max(sigma, 1e-12);
   Umin = min(U);
 
   t = numel(log.Pf_hat) + 1;
-  [score, detail] = lqy.al.acquisitionScore(mu, sigma, poolX, XTrain, cfg, normModel, t);
+  [score, detail] = lqy.al.acquisitionScore(ghat, sigma, poolX, XTrain, cfg, normModel, t);
   score(picked) = -inf;
   [~, nextIdx] = max(score);
 
@@ -121,9 +121,7 @@ hp = hpPrev;
 
 if ~isfield(cfg, "tune") || ~isfield(cfg.tune, "enabled") || ~cfg.tune.enabled
   if isempty(hp)
-    Z = lqy.norm.zscoreApply(XTrain, normModel);
-    hp = lqy.svr.defaultHyperparams(Z, gTrain, cfg);
-    hp.type = "krr";
+    hp = defaultHpForMain(normModel, XTrain, gTrain, cfg);
   end
   return;
 end
@@ -153,6 +151,28 @@ end
 Z = lqy.norm.zscoreApply(XTrain, normModel);
 [hp, info] = lqy.svr.tuneHyperparams(Z, gTrain, w, cfg, methodHint);
 doTune = true;
+end
+
+function hp = defaultHpForMain(normModel, XTrain, gTrain, cfg)
+Z = lqy.norm.zscoreApply(XTrain, normModel);
+base = lqy.svr.defaultHyperparams(Z, gTrain, cfg);
+
+method = "auto";
+if isfield(cfg, "surrogate") && isfield(cfg.surrogate, "method")
+  method = string(cfg.surrogate.method);
+end
+method = lower(method);
+
+useSVR = (method == "svr") || (method == "auto" && exist("fitrsvm", "file") == 2);
+if method == "krr"; useSVR = false; end
+
+if useSVR
+  eps0 = 0.1 * std(gTrain, 0, 1, "omitnan");
+  if ~isfinite(eps0) || eps0 <= 0; eps0 = 1e-3; end
+  hp = struct("type","svr", "KernelScale", base.ell, "BoxConstraint", 10, "Epsilon", eps0);
+else
+  hp = struct("type","krr", "ell", base.ell, "lambda", base.lambda);
+end
 end
 
 function out = getfieldWithDefault(s, name, defaultValue)

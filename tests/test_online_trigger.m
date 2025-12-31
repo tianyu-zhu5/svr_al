@@ -19,7 +19,14 @@ classdef test_online_trigger < matlab.unittest.TestCase
       XTrain = pool.X(1:15,:);
       gTrain = spec.evalFcn(XTrain);
       nm = lqy.norm.fitNormModel(XTrain, spec);
-      model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, struct("bootstrapM",5), nm);
+      cfg2 = cfg;
+      cfg2.bootstrapM = 5;
+      cfg2.weights = struct("form","inv","tauQuantile",0.3);
+      cfg2.surrogate = struct("method","krr");
+      cfg2.tune = struct("enabled", false);
+      base = lqy.svr.defaultHyperparams(lqy.norm.zscoreApply(XTrain, nm), gTrain, cfg2);
+      hp = struct("type","krr","ell",base.ell,"lambda",base.lambda);
+      model = lqy.surrogate.trainSurrogate(XTrain, gTrain, cfg2, spec, nm, hp);
 
       designHist = [0 0; 0.02 0.01];
       [tr, reason] = lqy.online.shouldTrigger(designHist, model, pool.X, XTrain, cfg);
@@ -28,4 +35,3 @@ classdef test_online_trigger < matlab.unittest.TestCase
     end
   end
 end
-

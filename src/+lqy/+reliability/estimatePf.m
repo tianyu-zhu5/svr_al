@@ -1,9 +1,9 @@
-function Pf = estimatePf(mu, cfg)
-%ESTIMATEPF Estimate failure probability from surrogate mean on a fixed sample set.
-% Default: Pf = mean(mu <= 0).
+function Pf = estimatePf(ghat, cfg)
+%ESTIMATEPF Estimate failure probability from surrogate prediction on a fixed sample set.
+% Default (A-mean): Pf = mean(ghat <= 0).
 
 arguments
-  mu (:,1) double
+  ghat (:,1) double
   cfg (1,1) struct
 end
 
@@ -20,6 +20,5 @@ if useSafety
   error("Safety-side Pf requires sigma; call estimatePfSafety(mu,sigma,...) or disable useSafety.");
 end
 
-Pf = mean(mu <= 0);
+Pf = mean(ghat <= 0);
 end
-

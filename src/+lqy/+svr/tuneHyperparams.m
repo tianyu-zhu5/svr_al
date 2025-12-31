@@ -157,7 +157,8 @@ for k = 1:K
     "KernelScale", ks, ...
     "BoxConstraint", bc, ...
     "Epsilon", eps0, ...
-    "Standardize", false);
+    "Standardize", false, ...
+    "Weights", w(trainMask));
   pred(testMask) = predict(mdl, Z(testMask,:));
 end
 obj = scoreFromPred(y, pred, w, metric);
@@ -172,7 +173,7 @@ for k = 1:K
   if nnz(trainMask) < 5 || nnz(testMask) < 1
     continue;
   end
-  base = lqy.svr.trainKRR(Z(trainMask,:), y(trainMask), struct("ell",ell,"lambda",lambda));
+  base = lqy.svr.trainKRRWeighted(Z(trainMask,:), y(trainMask), struct("ell",ell,"lambda",lambda), w(trainMask));
   pred(testMask) = lqy.svr.predictKRR(base, Z(testMask,:));
 end
 obj = scoreFromPred(y, pred, w, metric);
@@ -194,4 +195,3 @@ switch lower(metric)
     obj = lqy.util.weightedRmse(yy, pp, ww);
 end
 end
-

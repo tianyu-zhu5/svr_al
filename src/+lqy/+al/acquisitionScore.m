@@ -1,10 +1,10 @@
-function [score, detail] = acquisitionScore(mu, sigma, XQuery, XTrain, cfg, normModel, t)
+function [score, detail] = acquisitionScore(ghat, sigma, XQuery, XTrain, cfg, normModel, t)
 %ACQUISITIONSCORE Combined exploitation (inverse U) and exploration (min distance).
 %
 % score: larger is better.
 
 arguments
-  mu (:,1) double
+  ghat (:,1) double
   sigma (:,1) double
   XQuery (:,:) double
   XTrain (:,:) double
@@ -14,7 +14,7 @@ arguments
 end
 
 epsSigma = 1e-12;
-U = abs(mu) ./ max(sigma, epsSigma);
+U = abs(ghat) ./ max(sigma, epsSigma);
 
 exploitation = 1 ./ (U + 1e-6); % larger near boundary & uncertain
 
@@ -29,4 +29,3 @@ score = alpha .* exploitation + (1 - alpha) .* exploration;
 
 detail = struct("U", U, "exploitation", exploitation, "exploration", exploration, "alpha", alpha);
 end
-

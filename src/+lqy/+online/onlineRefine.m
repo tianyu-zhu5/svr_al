@@ -58,8 +58,8 @@ if isfield(cfg, "online") && isfield(cfg.online, "maxIters"); maxIters = min(max
 xd = designHist(end, :);
 
 hpCurrent = [];
-if isfield(model, "hpShared")
-  hpCurrent = model.hpShared;
+if isstruct(model) && isfield(model, "hp") && ~isempty(model.hp)
+  hpCurrent = model.hp;
 end
 onlineTune = false;
 if isfield(cfg, "online") && isfield(cfg.online, "tuneEnabled")
@@ -74,7 +74,18 @@ for it = 1:maxIters
     Z = lqy.norm.zscoreApply(XTrain, normModel);
     [hpCurrent, ~] = lqy.svr.tuneHyperparams(Z, gTrain, w, cfg, "auto");
   end
-  model = lqy.svr.trainBootstrapSurrogate(XTrain, gTrain, cfg, normModel, hpCurrent);
+  if isempty(hpCurrent)
+    % Default hyperparams consistent with main model.
+    base = lqy.svr.defaultHyperparams(lqy.norm.zscoreApply(XTrain, normModel), gTrain, cfg);
+    if exist("fitrsvm","file")==2 && (~isfield(cfg,"surrogate") || ~isfield(cfg.surrogate,"method") || lower(string(cfg.surrogate.method))~="krr")
+      eps0 = 0.1 * std(gTrain, 0, 1, "omitnan");
+      if ~isfinite(eps0) || eps0 <= 0; eps0 = 1e-3; end
+      hpCurrent = struct("type","svr","KernelScale",base.ell,"BoxConstraint",10,"Epsilon",eps0);
+    else
+      hpCurrent = struct("type","krr","ell",base.ell,"lambda",base.lambda);
+    end
+  end
+  model = lqy.surrogate.trainSurrogate(XTrain, gTrain, cfg, spec, normModel, hpCurrent);
 
   idxLocal = lqy.online.localPoolIndices(poolX, xd, r, normModel);
   if isempty(idxLocal)
@@ -86,7 +97,7 @@ for it = 1:maxIters
   end
 
   Xcand = poolX(idxLocal, :);
-  [mu, sigma] = lqy.svr.predictBootstrap(model, Xcand);
+  [ghat, sigma] = lqy.surrogate.predictSurrogate(model, Xcand);
 
   localCfg = cfg;
   if ~isfield(localCfg, "acq"); localCfg.acq = struct(); end
@@ -95,7 +106,7 @@ for it = 1:maxIters
   localCfg.acq.alphaRampIters = 1;
 
   t = it;
-  [score, ~] = lqy.al.acquisitionScore(mu, sigma, Xcand, XTrain, localCfg, normModel, t);
+  [score, ~] = lqy.al.acquisitionScore(ghat, sigma, Xcand, XTrain, localCfg, normModel, t);
 
   % Exclude already selected pool points.
   score(picked(idxLocal)) = -inf;
