@@ -1,6 +1,6 @@
 # Roadmap（从 0 到可交付的 MATLAB 主动学习可靠性代理模型）
 
-> 目标：实现 `design.md` 中描述的“pool-based active learning +（加权）RBF‑SVR + bootstrap 不确定度 + 失效概率 Pf 估计 +（可选）在线纠偏”完整工程，支持 2D 解析算例与后续对接 FEM/黑盒仿真；总真实调用预算默认 100 次，可配置。
+> 目标：实现 `design.md` 中描述的“pool-based active learning + 主模型（加权 RBF‑SVR / 无工具箱时 RBF‑KRR）预测 + bootstrap 仅用于不确定度 σ(x) + 失效概率 Pf 估计（A-mean）+（可选）在线纠偏”完整工程，支持 2D 解析算例与后续对接 FEM/黑盒仿真；总真实调用预算默认 100 次，可配置。
 
 ## 0. 约束与假设（先定边界，避免返工）
 
@@ -94,16 +94,16 @@ roadmap.md
 - `[X0, idx0] = lqy.doe.selectDOE_kmeans(pool, cfg, normModel)`
 - `normModel = lqy.norm.fitNormModel(X_train, spec)`（包含 `[0,1]^d` + z-score 所需参数）
 - `model = lqy.svr.trainBootstrapSVR(X_train, g_train, cfg, normModel)`
-- `[mu, sigma] = lqy.svr.predictBootstrap(model, X_query)`（对 n×d 输出 n×1）
-- `score = lqy.al.acquisitionScore(mu, sigma, X_query, X_train, cfg, normModel)`（实现 U + 探索项 + α）
+- `[ghat, sigma] = lqy.surrogate.predictSurrogate(model, X_query)`（ghat 来自主模型；sigma 来自 bootstrap）
+- `score = lqy.al.acquisitionScore(ghat, sigma, X_query, X_train, cfg, normModel)`（实现 U + 探索项 + α）
 - `[stop, state] = lqy.al.stopCriteria(log, cfg)`（Umin 稳定 / Pf 收敛 / 预算等）
-- `Pf = lqy.reliability.estimatePf(mu, cfg)`（默认用 `mu<=0` 指示函数，支持可选安全侧 `mu+κsigma`）
+- `Pf = lqy.reliability.estimatePf(ghat, cfg)`（A-mean：默认用 `ghat<=0` 指示函数；可选安全侧 `ghat+κsigma<=0`）
 - `lqy.io.saveModelAndLog(model, log, outDir)`（写 `model_offline.mat`/`model_online.mat`/`log.mat`）
 - `lqy.viz.plot2DResults(spec, pool, log, model, outDir)`（仅 2D 用）
 
 ### 3.3 在线纠偏接口（为 RBDO 留好“插槽”）
 
-- `predictSurrogate(x) -> [mu, sigma]`
+- `predictSurrogate(x) -> [ghat, sigma]`（A-mean：ghat 来自主模型，sigma 来自 bootstrap）
 - `estimateReliability(design) -> Pf, beta`（`beta = -norminv(Pf)`；可先占位/只返回 Pf）
 - `onlineRefine(design, budgetRemain) -> updatedModel, usedBudget, updatedLog`
 
@@ -203,14 +203,14 @@ roadmap.md
 
 - **工具箱缺失**：`fitrsvm/kmeans/bayesopt` 不可用 → 提供降级实现（简化 kmeans 替代、网格搜索、或切换到 `fitrgp` 备选但保持接口不变）。
 - **高维 pool 成本**：`Npool` 过大导致预测耗时 → 采用分批预测、子池筛选、或用 `pool_prob` 作为固定 MC 集降低冗余。
-- **模型偏置/误判**：只用 `mu<=0` 估 Pf 偏乐观 → 提供可选安全侧 `mu+κsigma<=0` 与 κ 配置。
+- **模型偏置/误判**：只用 `ghat<=0` 估 Pf 偏乐观 → 提供可选安全侧 `ghat+κsigma<=0` 与 κ 配置。
 - **在线触发不稳定**：触发条件过敏/过钝 → 将阈值参数化，并在日志中记录触发原因与阈值命中情况，便于回放调参。
 - **FEM 不稳定/失败**：引入缓存、重试、超时与断点恢复；把每次 evaluator 调用的输入/输出/状态写入日志。
 
 ## 7. 最小实现优先级（建议你们按此顺序开工）
 
 1. M0 + M1：把 pool/DOE/log 跑通并可视化（最快暴露数据结构问题）。
-2. M2：把 bootstrap SVR 的 `mu/sigma` 跑通（否则后续 U-function 无从谈起）。
+2. M2：把 A-mean 的 `ghat/sigma` 跑通（主模型预测 + bootstrap σ；否则后续 U-function 无从谈起）。
 3. M3：离线主动学习闭环（项目主价值）。
 4. M4：复现实验与标准输出（利于协作与评审）。
 5. M5：在线纠偏接口（为 RBDO 预留，不阻塞离线交付）。
@@ -221,4 +221,3 @@ roadmap.md
 - 运行离线 2D 示例：`matlab -batch "run('examples/run_2d_offline.m')"`
 - 运行离线+在线 2D 示例：`matlab -batch "run('examples/run_2d_offline_online.m')"`
 - 跑测试：`matlab -batch "results=runtests('tests'); assertSuccess(results)"`
-

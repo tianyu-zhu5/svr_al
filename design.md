@@ -646,11 +646,20 @@ g
 𝜎
 μ,σ 用于采样准则与在线纠偏触发。
 
+A-mean（主模型预测）实现说明（已按此思路重构代码）
+
+- 定义 ĝ(x) 为“单一主模型（main model）”在全训练集上训练得到的预测（加权 RBF-SVR；若无工具箱则用等价的 RBF-KRR）。
+- bootstrap 集成训练得到的 M 个子模型仅用于估计不确定度 σ(x)（不再把集成均值 μ(x) 当作最终 ĝ(x)）。
+- 采样准则（U-function）使用：U(x)=|ĝ(x)|/(σ(x)+ε)。
+- Pf 估计默认使用：I(ĝ(x)≤0) 的样本比例。
+
 最终模型保存形式
 
 建议保存：
 
-models{1..M}：bootstrap 子模型
+mainModel：主模型（用于 ĝ(x)）
+
+sigmaModels{1..M}：bootstrap 子模型（用于 σ(x)）
 
 theta：超参
 
@@ -882,6 +891,10 @@ t
 不确定度驱动（避免错判边界）
 
 可靠度导向：SVR版 U-function
+
+（A-mean 更新：用主模型 ĝ(x) 代替集成均值 μ(x)）
+
+U(x) = |ĝ(x)| / (σ(x) + ε)
 𝑈
 (
 𝑥
@@ -1334,6 +1347,8 @@ f
 𝜇
 μ 即可。
 
+（A-mean 更新：这里的“判失效”应以主模型 ĝ(x) 为准；保守估计可用 ĝ(x)+κσ(x)≤0）
+
 在线纠偏：
 目标
 
@@ -1506,7 +1521,7 @@ d
 
 提供函数句柄/接口：
 
-predictSurrogate(x) -> [mu, sigma]
+predictSurrogate(x) -> [ghat, sigma]（ghat 来自主模型，sigma 来自 bootstrap）
 
 estimateReliability(design) -> Pf, beta（当前先占位）
 
